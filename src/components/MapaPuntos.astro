@@ -16,8 +16,8 @@ const { fullHeight = false } = Astro.props;
 
 	type PuntoInteres = {
 		nombre?: string;
-		lat?: number;
-		lon?: number;
+		lat?: number | string;
+		lon?: number | string;
 		icono?: string | null;
 	};
 
@@ -48,11 +48,14 @@ const { fullHeight = false } = Astro.props;
 			const bounds: L.LatLngTuple[] = [];
 
 			for (const punto of puntos) {
-				if (typeof punto.lat !== 'number' || typeof punto.lon !== 'number') {
+				const lat = Number(punto.lat);
+				const lon = Number(punto.lon);
+
+				if (Number.isNaN(lat) || Number.isNaN(lon)) {
 					continue;
 				}
 
-				const icono = typeof punto.icono === 'string' && punto.icono.length > 0 ? punto.icono : 'null';
+				const icono = typeof punto.icono === 'string' && punto.icono.length > 0 ? punto.icono : 'pin-uod';
 				const markerIcon = L.icon({
 					iconUrl: `https://mpfciudad.gob.ar/img/site/mapa/${icono}.svg`,
 					iconSize: [28, 34],
@@ -60,12 +63,12 @@ const { fullHeight = false } = Astro.props;
 					popupAnchor: [0, -30],
 				});
 
-				const marker = L.marker([punto.lat, punto.lon], { icon: markerIcon }).addTo(map);
+				const marker = L.marker([lat, lon], { icon: markerIcon }).addTo(map);
 				if (typeof punto.nombre === 'string' && punto.nombre.length > 0) {
 					marker.bindPopup(punto.nombre);
 				}
 
-				bounds.push([punto.lat, punto.lon]);
+				bounds.push([lat, lon]);
 			}
 
 			if (bounds.length > 0) {
