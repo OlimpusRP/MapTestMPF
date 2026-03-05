@@ -25,6 +25,8 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 
 			type ApiPoint = Record<string, unknown> & {
 				coordenadas?: unknown;
+				geometry?: unknown;
+				properties?: unknown;
 			};
 
 			function isObject(value: unknown): value is Record<string, unknown> {
@@ -33,6 +35,93 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 
 			const statusElement = document.getElementById('status');
 			const mapElement = document.getElementById('map');
+
+			const colorPalette = ['#e11d48', '#2563eb', '#16a34a', '#f59e0b', '#7c3aed', '#0f766e'];
+
+			function hashString(value: string): number {
+				let hash = 0;
+				for (let index = 0; index < value.length; index += 1) {
+					hash = (hash << 5) - hash + value.charCodeAt(index);
+					hash |= 0;
+				}
+				return Math.abs(hash);
+			}
+
+			function pickColor(point: ApiPoint): string {
+				const fromApi = [point?.color, point?.colour, point?.hex, point?.color_hex].find(
+					(value) => typeof value === 'string' && value.length > 0,
+				);
+
+				if (typeof fromApi === 'string') {
+					return fromApi;
+				}
+
+				const category = [point?.tipo, point?.categoria, point?.category].find(
+					(value) => typeof value === 'string' && value.length > 0,
+				);
+
+				if (typeof category !== 'string') {
+					return '#2563eb';
+				}
+
+				return colorPalette[hashString(category) % colorPalette.length];
+			}
+
+			function parseCoordinatePair(raw: unknown): { lat: number; lng: number } | null {
+				if (!Array.isArray(raw) || raw.length < 2) {
+					return null;
+				}
+
+				const [first, second] = raw as [unknown, unknown];
+				const firstNumber = Number(first);
+				const secondNumber = Number(second);
+
+				if (Number.isNaN(firstNumber) || Number.isNaN(secondNumber)) {
+					return null;
+				}
+
+				if (Math.abs(firstNumber) <= 90 && Math.abs(secondNumber) <= 180) {
+					return { lat: firstNumber, lng: secondNumber };
+				}
+
+				if (Math.abs(secondNumber) <= 90 && Math.abs(firstNumber) <= 180) {
+					return { lat: secondNumber, lng: firstNumber };
+				}
+
+				return null;
+			}
+
+			function normalizePoint(raw: unknown): ApiPoint {
+				if (!isObject(raw)) {
+					return {};
+				}
+
+				if (isObject(raw.properties)) {
+					return { ...raw.properties, ...raw };
+				}
+
+				return raw;
+			}
+
+			function extractPoints(payload: unknown): ApiPoint[] {
+				if (Array.isArray(payload)) {
+					return payload.map(normalizePoint);
+				}
+
+				if (!isObject(payload)) {
+					return [];
+				}
+
+				const containers = [payload.data, payload.features, payload.resultados, payload.items];
+
+				for (const container of containers) {
+					if (Array.isArray(container)) {
+						return container.map(normalizePoint);
+					}
+				}
+
+				return [];
+			}
 
 			function extractCoordinates(point: ApiPoint): { lat: number; lng: number } | null {
 				const latCandidates = ['lat', 'latitude', 'y'];
@@ -53,10 +142,30 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 
 				if (lat !== null && lng !== null) return { lat, lng };
 
-				if (Array.isArray(point?.coordenadas) && point.coordenadas.length >= 2) {
-					const [coordLng, coordLat] = point.coordenadas as [unknown, unknown];
-					if (!Number.isNaN(Number(coordLat)) && !Number.isNaN(Number(coordLng))) {
-						return { lat: Number(coordLat), lng: Number(coordLng) };
+				const coordinateCandidates = [
+					point?.coordenadas,
+					isObject(point?.geometry) ? (point.geometry as Record<string, unknown>).coordinates : null,
+					isObject(point?.ubicacion) ? (point.ubicacion as Record<string, unknown>).coordinates : null,
+					isObject(point?.location) ? (point.location as Record<string, unknown>).coordinates : null,
+				];
+
+				for (const candidate of coordinateCandidates) {
+					const parsed = parseCoordinatePair(candidate);
+					if (parsed) return parsed;
+				}
+
+				const textCoordinate = [point?.wkt, point?.geom, point?.geometry_text].find(
+					(value) => typeof value === 'string' && value.toUpperCase().startsWith('POINT('),
+				);
+
+				if (typeof textCoordinate === 'string') {
+					const matches = textCoordinate.match(/POINT\s*\(([-\d\.]+)\s+([-\d\.]+)\)/i);
+					if (matches) {
+						const lngFromText = Number(matches[1]);
+						const latFromText = Number(matches[2]);
+						if (!Number.isNaN(latFromText) && !Number.isNaN(lngFromText)) {
+							return { lat: latFromText, lng: lngFromText };
+						}
 					}
 				}
 
@@ -88,11 +197,7 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 					}
 
 					const payload: unknown = await response.json();
-					const points: ApiPoint[] = Array.isArray(payload)
-						? (payload as ApiPoint[])
-						: isObject(payload) && Array.isArray(payload.data)
-							? (payload.data as ApiPoint[])
-							: [];
+					const points: ApiPoint[] = extractPoints(payload);
 
 					const bounds: L.LatLngTuple[] = [];
 
@@ -100,7 +205,13 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 						const coords = extractCoordinates(point);
 						if (!coords) return;
 
-						const marker = L.marker([coords.lat, coords.lng]).addTo(map);
+						const marker = L.circleMarker([coords.lat, coords.lng], {
+							radius: 7,
+							color: '#0f172a',
+							weight: 1,
+							fillColor: pickColor(point),
+							fillOpacity: 0.95,
+						}).addTo(map);
 						marker.bindPopup(extractName(point, index));
 						bounds.push([coords.lat, coords.lng]);
 					});
