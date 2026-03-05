@@ -13,37 +13,129 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 	<body>
 		<Header />
 		<main>
-			<h1>🧑‍🚀 Hello, Astronaut!</h1>
-			<p>
-				Welcome to the official <a href="https://astro.build/">Astro</a> blog starter template. This template
-				serves as a lightweight, minimally-styled starting point for anyone looking to build a personal
-				website, blog, or portfolio with Astro.
-			</p>
-			<p>
-				This template comes with a few integrations already configured in your
-				<code>astro.config.mjs</code> file. You can customize your setup with
-				<a href="https://astro.build/integrations">Astro Integrations</a> to add tools like Tailwind,
-				React, or Vue to your project.
-			</p>
-			<p>Here are a few ideas on how to get started with the template:</p>
-			<ul>
-				<li>Edit this page in <code>src/pages/index.astro</code></li>
-				<li>Edit the site header items in <code>src/components/Header.astro</code></li>
-				<li>Add your name to the footer in <code>src/components/Footer.astro</code></li>
-				<li>Check out the included blog posts in <code>src/content/blog/</code></li>
-				<li>Customize the blog post page layout in <code>src/layouts/BlogPost.astro</code></li>
-			</ul>
-			<p>
-				Have fun! If you get stuck, remember to
-				<a href="https://docs.astro.build/">read the docs</a>
-				or <a href="https://astro.build/chat">join us on Discord</a> to ask questions.
-			</p>
-			<p>
-				Looking for a blog template with a bit more personality? Check out
-				<a href="https://github.com/Charca/astro-blog-template">astro-blog-template</a>
-				by <a href="https://twitter.com/Charca">Maxi Ferreira</a>.
-			</p>
+			<h1>Mapa de puntos de interés</h1>
+			<p>Visualización en tiempo real desde la API del MPF Ciudad.</p>
+			<div id="status">Cargando puntos...</div>
+			<div id="map" aria-label="Mapa de puntos de interés" role="region"></div>
 		</main>
 		<Footer />
+		<link
+			rel="stylesheet"
+			href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+			integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+			crossorigin=""
+		/>
+		<script
+			src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+			integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+			crossorigin=""
+		></script>
+		<script>
+			const statusElement = document.getElementById('status');
+			const mapElement = document.getElementById('map');
+
+			function extractCoordinates(point) {
+				const latCandidates = ['lat', 'latitude', 'y'];
+				const lngCandidates = ['lng', 'lon', 'long', 'longitude', 'x'];
+
+				const getCoordinate = (keys) => {
+					for (const key of keys) {
+						if (point?.[key] !== undefined && point?.[key] !== null) {
+							const parsed = Number(point[key]);
+							if (!Number.isNaN(parsed)) return parsed;
+						}
+					}
+					return null;
+				};
+
+				const lat = getCoordinate(latCandidates);
+				const lng = getCoordinate(lngCandidates);
+
+				if (lat !== null && lng !== null) return { lat, lng };
+
+				if (Array.isArray(point?.coordenadas) && point.coordenadas.length >= 2) {
+					const [coordLng, coordLat] = point.coordenadas;
+					if (!Number.isNaN(Number(coordLat)) && !Number.isNaN(Number(coordLng))) {
+						return { lat: Number(coordLat), lng: Number(coordLng) };
+					}
+				}
+
+				return null;
+			}
+
+			function extractName(point, index) {
+				return (
+					point?.nombre ||
+					point?.name ||
+					point?.titulo ||
+					point?.title ||
+					`Punto ${index + 1}`
+				);
+			}
+
+			async function initMap() {
+				if (!window.L || !mapElement || !statusElement) {
+					return;
+				}
+
+				const map = L.map('map').setView([-34.6037, -58.3816], 12);
+
+				L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+					maxZoom: 19,
+					attribution: '&copy; OpenStreetMap contributors',
+				}).addTo(map);
+
+				try {
+					const response = await fetch('https://mpfciudad.gob.ar/api/v1.0/puntos_interes');
+					if (!response.ok) {
+						throw new Error(`Error HTTP ${response.status}`);
+					}
+
+					const payload = await response.json();
+					const points = Array.isArray(payload)
+						? payload
+						: Array.isArray(payload?.data)
+							? payload.data
+							: [];
+
+					const bounds = [];
+
+					points.forEach((point, index) => {
+						const coords = extractCoordinates(point);
+						if (!coords) return;
+
+						const marker = L.marker([coords.lat, coords.lng]).addTo(map);
+						marker.bindPopup(extractName(point, index));
+						bounds.push([coords.lat, coords.lng]);
+					});
+
+					if (bounds.length > 0) {
+						map.fitBounds(bounds, { padding: [30, 30] });
+						statusElement.textContent = `Se cargaron ${bounds.length} puntos.`;
+					} else {
+						statusElement.textContent = 'No se encontraron coordenadas válidas.';
+					}
+				} catch (error) {
+					statusElement.textContent = 'No se pudo cargar la API de puntos de interés.';
+					console.error(error);
+				}
+			}
+
+			initMap();
+		</script>
+		<style>
+			#map {
+				height: 70vh;
+				min-height: 420px;
+				width: 100%;
+				border-radius: 12px;
+				margin-top: 1rem;
+			}
+
+			#status {
+				font-size: 1rem;
+				margin-top: 0.5rem;
+			}
+		</style>
 	</body>
 </html>
