@@ -1,0 +1,94 @@
+---
+interface Props {
+	fullHeight?: boolean;
+}
+
+const { fullHeight = false } = Astro.props;
+---
+
+<div class={`map-wrapper ${fullHeight ? 'is-full' : ''}`}>
+	<div id="map" aria-label="Mapa de puntos de interés" role="region"></div>
+</div>
+
+<script>
+	import L from 'leaflet';
+	import 'leaflet/dist/leaflet.css';
+
+	type PuntoInteres = {
+		nombre?: string;
+		lat?: number;
+		lon?: number;
+		icono?: string | null;
+	};
+
+	const mapElement = document.getElementById('map');
+
+	async function initMap() {
+		if (!mapElement) {
+			return;
+		}
+
+		const map = L.map('map').setView([-34.6037, -58.3816], 12);
+
+		L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+			subdomains: 'abcd',
+			maxZoom: 20,
+			attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+		}).addTo(map);
+
+		L.control.scale({ imperial: false }).addTo(map);
+
+		try {
+			const response = await fetch('https://mpfciudad.gob.ar/api/v1.0/puntos_interes');
+			if (!response.ok) {
+				throw new Error(`Error HTTP ${response.status}`);
+			}
+
+			const puntos = (await response.json()) as PuntoInteres[];
+			const bounds: L.LatLngTuple[] = [];
+
+			for (const punto of puntos) {
+				if (typeof punto.lat !== 'number' || typeof punto.lon !== 'number') {
+					continue;
+				}
+
+				const icono = typeof punto.icono === 'string' && punto.icono.length > 0 ? punto.icono : 'null';
+				const markerIcon = L.icon({
+					iconUrl: `https://mpfciudad.gob.ar/img/site/mapa/${icono}.svg`,
+					iconSize: [28, 34],
+					iconAnchor: [14, 34],
+					popupAnchor: [0, -30],
+				});
+
+				const marker = L.marker([punto.lat, punto.lon], { icon: markerIcon }).addTo(map);
+				if (typeof punto.nombre === 'string' && punto.nombre.length > 0) {
+					marker.bindPopup(punto.nombre);
+				}
+
+				bounds.push([punto.lat, punto.lon]);
+			}
+
+			if (bounds.length > 0) {
+				map.fitBounds(bounds, { padding: [20, 20] });
+			}
+		} catch (error) {
+			console.error(error);
+		}
+	}
+
+	initMap();
+</script>
+
+<style>
+	#map {
+		height: 70vh;
+		min-height: 420px;
+		width: 100%;
+		margin-top: 0;
+	}
+
+	.map-wrapper.is-full #map {
+		height: calc(100vh - 2rem);
+		min-height: 700px;
+	}
+</style>
