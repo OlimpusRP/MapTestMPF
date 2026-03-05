@@ -1,12 +1,13 @@
 ---
 interface Props {
 	fullHeight?: boolean;
+	variant?: 'standard' | 'modified';
 }
 
-const { fullHeight = false } = Astro.props;
+const { fullHeight = false, variant = 'modified' } = Astro.props;
 ---
 
-<div class={`map-wrapper ${fullHeight ? 'is-full' : ''}`}>
+<div class={`map-wrapper ${fullHeight ? 'is-full' : ''}`} data-variant={variant}>
 	<div id="map" aria-label="Mapa de puntos de interés" role="region"></div>
 </div>
 
@@ -22,6 +23,8 @@ const { fullHeight = false } = Astro.props;
 	};
 
 	const mapElement = document.getElementById('map');
+	const wrapperElement = document.querySelector('.map-wrapper');
+	const variant = wrapperElement?.getAttribute('data-variant') === 'standard' ? 'standard' : 'modified';
 
 	async function initMap() {
 		if (!mapElement) {
@@ -30,7 +33,12 @@ const { fullHeight = false } = Astro.props;
 
 		const map = L.map('map').setView([-34.6037, -58.3816], 12);
 
-		L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+		const tileUrl =
+			variant === 'standard'
+				? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
+				: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png';
+
+		L.tileLayer(tileUrl, {
 			subdomains: 'abcd',
 			maxZoom: 20,
 			attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
