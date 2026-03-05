@@ -19,26 +19,26 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 			<div id="map" aria-label="Mapa de puntos de interés" role="region"></div>
 		</main>
 		<Footer />
-		<link
-			rel="stylesheet"
-			href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-			integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-			crossorigin=""
-		/>
-		<script
-			src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-			integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-			crossorigin=""
-		></script>
 		<script>
+			import L from 'leaflet';
+			import 'leaflet/dist/leaflet.css';
+
+			type ApiPoint = Record<string, unknown> & {
+				coordenadas?: unknown;
+			};
+
+			function isObject(value: unknown): value is Record<string, unknown> {
+				return typeof value === 'object' && value !== null;
+			}
+
 			const statusElement = document.getElementById('status');
 			const mapElement = document.getElementById('map');
 
-			function extractCoordinates(point) {
+			function extractCoordinates(point: ApiPoint): { lat: number; lng: number } | null {
 				const latCandidates = ['lat', 'latitude', 'y'];
 				const lngCandidates = ['lng', 'lon', 'long', 'longitude', 'x'];
 
-				const getCoordinate = (keys) => {
+				const getCoordinate = (keys: string[]): number | null => {
 					for (const key of keys) {
 						if (point?.[key] !== undefined && point?.[key] !== null) {
 							const parsed = Number(point[key]);
@@ -54,7 +54,7 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 				if (lat !== null && lng !== null) return { lat, lng };
 
 				if (Array.isArray(point?.coordenadas) && point.coordenadas.length >= 2) {
-					const [coordLng, coordLat] = point.coordenadas;
+					const [coordLng, coordLat] = point.coordenadas as [unknown, unknown];
 					if (!Number.isNaN(Number(coordLat)) && !Number.isNaN(Number(coordLng))) {
 						return { lat: Number(coordLat), lng: Number(coordLng) };
 					}
@@ -63,18 +63,14 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 				return null;
 			}
 
-			function extractName(point, index) {
-				return (
-					point?.nombre ||
-					point?.name ||
-					point?.titulo ||
-					point?.title ||
-					`Punto ${index + 1}`
-				);
+			function extractName(point: ApiPoint, index: number): string {
+				const fields = [point?.nombre, point?.name, point?.titulo, point?.title];
+				const firstText = fields.find((value) => typeof value === 'string' && value.length > 0);
+				return typeof firstText === 'string' ? firstText : `Punto ${index + 1}`;
 			}
 
 			async function initMap() {
-				if (!window.L || !mapElement || !statusElement) {
+				if (!mapElement || !statusElement) {
 					return;
 				}
 
@@ -91,16 +87,16 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 						throw new Error(`Error HTTP ${response.status}`);
 					}
 
-					const payload = await response.json();
-					const points = Array.isArray(payload)
-						? payload
-						: Array.isArray(payload?.data)
-							? payload.data
+					const payload: unknown = await response.json();
+					const points: ApiPoint[] = Array.isArray(payload)
+						? (payload as ApiPoint[])
+						: isObject(payload) && Array.isArray(payload.data)
+							? (payload.data as ApiPoint[])
 							: [];
 
-					const bounds = [];
+					const bounds: L.LatLngTuple[] = [];
 
-					points.forEach((point, index) => {
+					points.forEach((point: ApiPoint, index: number) => {
 						const coords = extractCoordinates(point);
 						if (!coords) return;
 
