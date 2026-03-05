@@ -14,8 +14,10 @@ const { fullHeight = false, variant = 'modified' } = Astro.props;
 <script>
 	import L from 'leaflet';
 	import 'leaflet/dist/leaflet.css';
+	import { MAPA_NOMBRES } from '../data/mapaNombres';
 
 	type PuntoInteres = {
+		id?: number | string;
 		nombre?: string;
 		lat?: number | string;
 		lon?: number | string;
@@ -72,8 +74,17 @@ const { fullHeight = false, variant = 'modified' } = Astro.props;
 				});
 
 				const marker = L.marker([lat, lon], { icon: markerIcon }).addTo(map);
-				if (typeof punto.nombre === 'string' && punto.nombre.length > 0) {
-					marker.bindPopup(punto.nombre);
+				const puntoId = Number(punto.id);
+				const customName = Number.isNaN(puntoId) ? undefined : MAPA_NOMBRES[puntoId];
+				const popupText =
+					typeof customName === 'string' && customName.length > 0
+						? customName
+						: typeof punto.nombre === 'string' && punto.nombre.length > 0
+							? punto.nombre
+							: '';
+
+				if (popupText.length > 0) {
+					marker.bindPopup(popupText);
 				}
 
 				bounds.push([lat, lon]);
